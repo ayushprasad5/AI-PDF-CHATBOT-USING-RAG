@@ -4,7 +4,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from pdf_processor import process_pdf
-from vector_store import build_vector_store
+from vector_store import build_vector_store, save_index, load_index
 from chatbot import configure_gemini, answer_question
 
 load_dotenv()
@@ -33,11 +33,18 @@ with st.sidebar:
 
             try:
                 configure_gemini()
-                chunks = process_pdf(tmp_path)
-                st.session_state.store = build_vector_store(chunks)
+
+                index_path = f"faiss_index_{uploaded_file.name}"
+                if os.path.exists(index_path):
+                    st.session_state.store = load_index(index_path)
+                else:
+                    chunks = process_pdf(tmp_path)
+                    st.session_state.store = build_vector_store(chunks)
+                    save_index(st.session_state.store, index_path)
+
                 st.session_state.file_name = uploaded_file.name
                 st.session_state.chat_history = []
-                st.success(f"Indexed {len(chunks)} chunks from {uploaded_file.name}")
+                st.success(f"Indexed {uploaded_file.name}")
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
             finally:
@@ -45,10 +52,9 @@ with st.sidebar:
 
     if st.session_state.file_name:
         st.info(f"Active document: {st.session_state.file_name}")
-
-    if st.button("Clear chat"):
-        st.session_state.chat_history = []
-        st.rerun()
+        if st.button("Clear chat"):
+            st.session_state.chat_history = []
+            st.rerun()
 
 if st.session_state.store is None:
     st.write("Upload a PDF from the sidebar to get started.")
@@ -58,7 +64,6 @@ else:
             st.write(msg["content"])
 
     question = st.chat_input("Ask something about the document...")
-
     if question:
         st.session_state.chat_history.append({"role": "user", "content": question})
         with st.chat_message("user"):
